@@ -1,0 +1,10 @@
+[dvb-t]
+frequency=470
+bandwidth=8
+module=DVB-T
+
+[initial_channer]
+aPID=101
+vPID=102
+aType=ac3
+vType=mpeg2

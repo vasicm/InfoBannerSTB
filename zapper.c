@@ -18,6 +18,8 @@
 #include "tables_parser.h"
 #include "tuner.h"
 #include "lists.h"
+#include "view.h"
+#include "config_reader.h"
 
 #define NUM_EVENTS  5
 
@@ -41,38 +43,71 @@
                                     printf("%s fail\n", y); \
                                     return -1; \
                                 }
+#define dbg printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__)
 
 
-static pthread_cond_t statusCondition = PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t statusMutex = PTHREAD_MUTEX_INITIALIZER;
+void applicationInit(int argc, char *argv[]);
+void applicationDeinit();
+void eventHandle();
 
+int main(int argc, char *argv[])
+{    
+    if(argc != 2 ) {
+        return 0;
+    }
 
-static int32_t inputFileDesc;
+    applicationInit(argc, argv);
+   
+    eventHandle();
     
-int32_t getKeys(int32_t count, uint8_t* buf, int32_t* eventsRead);
+    applicationDeinit();
 
-void *init()
+    return 0;
+}
+
+void applicationInit(int argc, char *argv[]) {
+    config conf;
+
+    initEventListener();
+    initConfig(argc, argv);
+    conf = getConfig();
+
+    setFrequency(conf.frequency);
+    setbBandwidth(conf.bandwidth);
+    setModul(conf.module);
+    initSTB();
+
+    setVPid(conf.vPID);
+    setVType(conf.vType);
+    setAPid(conf.aPID);
+    setAType(conf.aType);
+    initList();
+
+    initView(argc, argv);
+
+}
+
+void applicationDeinit() {
+    deintiView();
+    deinitList();
+    deinitSTB();
+    deintiEventListener();
+}
+
+void eventHandle()
 {
-    const char* dev = "/dev/input/event0";
-    char deviceName[20];
     struct input_event* eventBuf;
     uint32_t eventCnt;
     uint32_t i;
-    uint32_t count=0;
-    int delay;
+    uint32_t count=3;
     int p = 0;
     int pp = 0;
-    
-    inputFileDesc = open(dev, O_RDWR);
-    if(inputFileDesc == -1)
-    {
-        printf("Error while opening device (%s) !", strerror(errno));
-            return ;
-    }
-    
-    ioctl(inputFileDesc, EVIOCGNAME(sizeof(deviceName)), deviceName);
-        printf("RC device opened succesfully [%s]\n", deviceName);
-    
+    channel currChannel;
+    int currNumber = 0;
+    struct timeval now;
+    int flag = 1;
+    int muteFlag = 0;
+
     eventBuf = malloc(NUM_EVENTS * sizeof(struct input_event));
     if(!eventBuf)
     {
@@ -80,45 +115,72 @@ void *init()
         return ;
     }
 
-    while(NON_STOP)
+    while(flag)
     {
         /* read input eventS */
         if(getKeys(NUM_EVENTS, (uint8_t*)eventBuf, &eventCnt))
         {
-                        printf("Error while reading input events !");
-                        return ;
-                }
+            printf("Error while reading input events !");
+            return ;
+        }
 
-        for(i = 0; i < eventCnt; i++)
+        gettimeofday(&now,NULL);
+
+        for(i = 0; i < eventCnt && flag; i++)
         {
             if(eventBuf[i].value == 1) {
-                pp = p;
-                p = (int)eventBuf[i].time.tv_sec;
                 
-                if((p - pp) > 0){
-                    printf("\n");
-                    //printf("time = %d\n", p - pp);
-                }
-                
+                //TODO replase with switch
                 if(eventBuf[i].code == KEY_VOLUME_UP) {
                     count++;
+                    muteFlag = 0;
+                    showVolumeGraph(count);
                 }else if(eventBuf[i].code == KEY_VOLUME_DOWN) {
                     count--;
+                    muteFlag = 0;
+                    showVolumeGraph(count);
                 }else if(eventBuf[i].code == KEY_INFO_){
-                    printf("count = %d \n",count);
-                }else if(eventBuf[i].code >= 2 && eventBuf[i].code <= 10) {
-                    printf("%d",eventBuf[i].code - 1);
-                    fflush(stdout);
-                }else if(eventBuf[i].code ==11) {
-                    printf("0");
-                    fflush(stdout);
+                    if(isInfoBannerShowM()) {
+                        hiddeInfoBanner();
+                    } else {
+                        currChannel = getCurrentChannel();
+                        showInfoBanner(currChannel.channelNumber, currChannel.aPID, currChannel.vPID, currChannel.teletext);
+                    }
+                    currNumber = 0;
+                }else if(eventBuf[i].code >= 2 && eventBuf[i].code <= 11) {
+                    pp = p;
+                    p = now.tv_sec; 
+
+                    if( (p - pp)>2 ) {
+                        currNumber = (eventBuf[i].code - 1) % 10; 
+                    } else {
+                        currNumber *= 10;
+                        currNumber += (eventBuf[i].code - 1) % 10;
+                    }
+
+                    showInfoBanner(currNumber, 0, 0, 0);
+                    if(zapChannel((uint16_t)currNumber)) {
+                        currChannel = getCurrentChannel();
+                        showInfoBanner(currChannel.channelNumber, currChannel.aPID, currChannel.vPID, currChannel.teletext);
+                    }
                 }else if(eventBuf[i].code == KEY_EXIT_) {
-                    return ;
+                    flag = 0;
                 }else if(eventBuf[i].code == KEY_CHANNEL_UP){  
                     zapNext();
+                    currChannel = getCurrentChannel();
+                    showInfoBanner(currChannel.channelNumber, currChannel.aPID, currChannel.vPID, currChannel.teletext);
                 }else if(eventBuf[i].code == KEY_CHANNEL_DOWN){
                     zapPrevious();
+                    currChannel = getCurrentChannel();
+                    showInfoBanner(currChannel.channelNumber, currChannel.aPID, currChannel.vPID, currChannel.teletext);
                 }else if(eventBuf[i].code == KEY_MUTE_){
+                    if(muteFlag) {
+                        showVolumeGraph(count);
+                        muteFlag = 0;
+                    } else {
+                        muteFlag = 1;
+                        showVolumeGraph(0);
+                    }
                 }
                 
             }
@@ -127,50 +189,5 @@ void *init()
     }
     
     free(eventBuf);
-    return NULL;
-}
-
-
-int main(int argc, char *argv[])
-{    
-    pthread_t init_thread;
-    
-    if(pthread_create(&init_thread, NULL, init, NULL)) {
-        fprintf(stderr, "Error creating thread\n");
-        return ERROR;
-    }
-    
-    initSTB();
-    initList();
-
-    /* Wait for a while */
-    fflush(stdin);
-    
-    if(pthread_join(init_thread, NULL)) {
-        fprintf(stderr, "Error joining thread\n");
-        return ERROR;
-    }
-    
-    /*Deinitialization*/
-    deinitList();
-    deinitSTB();
-
-    return 0;
-}
-
-int32_t getKeys(int32_t count, uint8_t* buf, int32_t* eventsRead)
-{
-    int32_t ret = 0;
-    
-    /* read input events and put them in buffer */
-    ret = read(inputFileDesc, buf, (size_t)(count * (int)sizeof(struct input_event)));
-    if(ret <= 0)
-    {
-        printf("Error code %d", ret);
-        return ERROR;
-    }
-    /* calculate number of read events */
-    *eventsRead = ret / (int)sizeof(struct input_event);
-    
-    return NO_ERROR;
+    return;
 }

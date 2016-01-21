@@ -23,6 +23,7 @@ typedef struct channel {
     tStreamType vType;
     uint16_t aPID; 
     tStreamType aType;
+    uint8_t teletext;
 }channel;
 
 void initList();
@@ -31,10 +32,20 @@ void addPat(PatHeader* patHeader);
 void addService(PatServiceInfo* patServiceInfo);
 void addPmt(PmtHeader* pmtHeader);
 void addStreamInfo(StreamInfo* streamInfo, uint16_t programNumber);
-//getAllChannels
+
 channel getCurrentChannel();
 void zapNext();
 void zapPrevious();
-//zapLogNumb()
-//zapChannel()
+
+uint8_t zapChannel(uint16_t channelNumber);
+void playStream();
+
+void setVPid(uint32_t pid);
+void setVType(tStreamType type);
+void setAPid(uint32_t pid);
+void setAType(tStreamType type);
+void scannChannel(uint16_t servicePid);
+void parsePat();
+void stopStream();
+
 #endif

@@ -1,12 +1,20 @@
-#ifndef HEADER_LISTS
-#define HEADER_LISTS
+#ifndef EVENT_LISTENER_HEADER
+#define EVENT_LISTENER_HEADER
 
-typedef enum {
+#include <stdlib.h>
+#include <pthread.h>
+#include <time.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
 
-}REMOTE_CODE;
+#include <linux/input.h>
+#include <fcntl.h>
+#include <unistd.h>
 
- void initEventListener();
- REMOTE_CODE getCode();
-// int32_t getKeys(int32_t count, uint8_t* buf, int32_t* eventsRead);
+void initEventListener();
+void deintiEventListener();
+int32_t getKeys(int32_t count, uint8_t* buf, int32_t* eventsRead);
 
 #endif

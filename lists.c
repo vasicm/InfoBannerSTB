@@ -8,6 +8,9 @@
                                     return; \
                                 }
 
+#define dbg printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__)
+
+
 static int32_t demuxCallback2(uint8_t *buffer); //todo static
 static int32_t demuxCallback(uint8_t *buffer); //todo static
 
@@ -39,6 +42,54 @@ static uint8_t currChannel;
 
 static uint8_t globalFlag;
 
+static uint32_t vPID = 1001; 
+static tStreamType vType = VIDEO_TYPE_MPEG2;
+static uint32_t aPID = 1003; 
+static tStreamType aType = AUDIO_TYPE_MPEG_AUDIO;
+
+void setVPid(uint32_t pid) {
+    vPID = pid;
+}
+
+void setVType(tStreamType type) {
+    vType = type;
+}
+
+void setAPid(uint32_t pid) {
+    aPID = pid;
+}
+
+void setAType(tStreamType type) {
+    aType = type;
+}
+
+void stopStream() {
+    if(videoStream != 0) {
+        Player_Stream_Remove(playerHandle, sourceHandle, videoStream);
+    }
+
+    if(videoStream != 0) {
+        Player_Stream_Remove(playerHandle, sourceHandle, audioStream);
+    }
+}
+
+void playStream(){
+
+    if(channels[currChannel].vPID != 0) {
+        Player_Stream_Create(playerHandle, sourceHandle, channels[currChannel].vPID, channels[currChannel].vType, &videoStream);
+    } else {
+        videoStream = 0;
+    }
+
+    if(channels[currChannel].aPID != 0) {
+        Player_Stream_Create(playerHandle, sourceHandle, channels[currChannel].aPID, channels[currChannel].aType, &audioStream);
+    } else {
+        audioStream = 0;
+    }
+
+    printf("\n currChannel = %d\n",currChannel);
+}
+
 void printChannels() {
 	uint8_t i;
 	for(i = 0;i<=channelNumber;i++) {
@@ -47,18 +98,32 @@ void printChannels() {
 		printf("\n vType = %d",channels[i].vType);
 		printf("\n aPID = %d",channels[i].aPID);
 		printf("\n aType = %d\n",channels[i].aType);
+        printf("\n teletext = %d\n",channels[i].teletext);
 	}
+}
+
+uint8_t zapChannel(uint16_t chNumb) {
+    uint8_t ret = 0;
+    uint8_t i;
+    for(i = 0; i<channelNumber; i++) {
+        if(channels[i].channelNumber == chNumb) {
+            currChannel = i;
+            ret = 1;
+            stopStream();
+            playStream();
+        }
+    }
+
+    return ret;
 }
 
 void zapNext() {
 	uint8_t i;
-	for(i = 0;i<=channelNumber;i++) {
-		currChannel= (currChannel + 1)%(channelNumber+1);
+	for(i = 0;i<channelNumber;i++) {
+		currChannel= (currChannel + 1)%(channelNumber);
 		if(channels[currChannel].vPID != 0) {
-			printf("\n currChannel = %d\n",currChannel);
-			Player_Stream_Remove(playerHandle, sourceHandle, videoStream);
-			// Player_Stream_Create(playerHandle, sourceHandle, 1001, vType, &videoStream);
-			Player_Stream_Create(playerHandle, sourceHandle, channels[currChannel].vPID, channels[currChannel].vType, &videoStream);
+            stopStream();
+			playStream();
 			return;
 		}
 	}
@@ -66,17 +131,15 @@ void zapNext() {
 
 void zapPrevious() {
 	uint8_t i;
-	for(i = channelNumber;i>=0;i--) {
+	for(i = channelNumber - 1; i>=0; i--) {
 		if(currChannel == 0) {
 			currChannel=channelNumber;
 		}else{
 			currChannel--;
 		}	
 		if(channels[currChannel].vPID != 0) {
-			printf("\n currChannel = %d\n",currChannel);
-			Player_Stream_Remove(playerHandle, sourceHandle, videoStream);
-			// Player_Stream_Create(playerHandle, sourceHandle, 1001, vType, &videoStream);
-			Player_Stream_Create(playerHandle, sourceHandle, channels[currChannel].vPID, channels[currChannel].vType, &videoStream);
+            stopStream();
+			playStream();
 			return;
 		}
 	}
@@ -86,15 +149,73 @@ channel getCurrentChannel() {
     return channels[currChannel];
 }
 
-void initList() {
-	uint32_t vPID = 101; 
-    tStreamType vType = VIDEO_TYPE_MPEG2;
-    uint32_t aPID = 103; 
-    tStreamType aType = AUDIO_TYPE_MPEG_AUDIO;
-	uint8_t i;
+void scannChannel(uint16_t servicePid)
+{
+    t_Error err = NO_ERROR;
 
-	gettimeofday(&now,NULL);
-    lockStatusWaitTime.tv_sec = now.tv_sec+5000;
+    err = Demux_Set_Filter(playerHandle, servicePid, 0x02, &filterHandle);
+    ASSERT_TDP_RESULT(err,"\nDemux_Set_Filter\n");
+
+     err = Demux_Register_Section_Filter_Callback(demuxCallback2);
+    ASSERT_TDP_RESULT(err,"\nDemux_Register_Section_Filter_Callback\n");
+
+    printf("%d mutex\n",channelNumber);
+
+    gettimeofday(&now,NULL);
+    lockStatusWaitTime.tv_sec = now.tv_sec+20;
+
+    pthread_mutex_lock(&statusMutex2);
+    if(ETIMEDOUT == pthread_cond_timedwait(&statusCondition2, &statusMutex2, &lockStatusWaitTime))
+    {
+        printf("\n%s:ERROR PARSE PAT TABLE!\n",__FUNCTION__);
+        return;
+    }
+    pthread_mutex_unlock(&statusMutex2);
+
+    err = Demux_Unregister_Section_Filter_Callback(demuxCallback2);
+    ASSERT_TDP_RESULT(err,"\nDemux_Unregister_Section_Filter_Callback\n");
+
+    err = Demux_Free_Filter(playerHandle, filterHandle);
+    ASSERT_TDP_RESULT(err,"Demux_Free_Filter\n");
+}
+
+void parsePat() {
+    uint8_t i;
+    uint8_t N;
+    t_Error err = NO_ERROR;
+
+    gettimeofday(&now,NULL);
+    lockStatusWaitTime.tv_sec = now.tv_sec+5;
+
+    err = Demux_Set_Filter(playerHandle, 0, 0, &filterHandle);
+    ASSERT_TDP_RESULT(err,"\nDemux_Set_Filter\n");
+
+    err = Demux_Register_Section_Filter_Callback(demuxCallback);
+    ASSERT_TDP_RESULT(err,"\nDemux_Register_Section_Filter_Callback\n");
+    
+    /*Initialize player, set PAT pid to demultiplexer and register section filter callback*/
+    pthread_mutex_lock(&statusMutex);
+    if(ETIMEDOUT == pthread_cond_timedwait(&statusCondition, &statusMutex, &lockStatusWaitTime))
+    {
+        printf("\n%s:ERROR PARSE PAT TABLE!\n",__FUNCTION__);
+        return;
+    }
+    pthread_mutex_unlock(&statusMutex);
+
+    err = Demux_Unregister_Section_Filter_Callback(demuxCallback);
+    ASSERT_TDP_RESULT(err,"\nDemux_Unregister_Section_Filter_Callback\n");
+
+    err = Demux_Free_Filter(playerHandle, filterHandle);
+    ASSERT_TDP_RESULT(err,"Demux_Free_Filter\n\n");
+
+    N = (header->section_length - 9) / 4;
+    for(i = 1; i < N; i++) {
+        scannChannel((service+i)->program_map_pid);
+        channelNumber++;
+    }
+}
+
+void initList() {
 
 	header = (PatHeader*)malloc(sizeof(PatHeader));
     service = (PatServiceInfo*)malloc(MAX_SERVICE * sizeof(PatServiceInfo));
@@ -109,72 +230,17 @@ void initList() {
     err = Player_Source_Open(playerHandle, &sourceHandle);
     ASSERT_TDP_RESULT(err,"\nPlayer_Source_Open\n");
 
-	err = Demux_Set_Filter(playerHandle, 0, 0, &filterHandle);
-    ASSERT_TDP_RESULT(err,"\nDemux_Set_Filter\n");
+    parsePat();
 
-    err = Demux_Register_Section_Filter_Callback(demuxCallback);
-    ASSERT_TDP_RESULT(err,"\nDemux_Register_Section_Filter_Callback\n");
-    
-    /*Initialize player, set PAT pid to demultiplexer and register section filter callback*/
- 	pthread_mutex_lock(&statusMutex);
-    if(ETIMEDOUT == pthread_cond_timedwait(&statusCondition, &statusMutex, &lockStatusWaitTime))
-    {
-        printf("\n%s:ERROR PARSE PAT TABLE!\n",__FUNCTION__);
-        return;
-    }
-
-	err = Demux_Unregister_Section_Filter_Callback(demuxCallback);
-	ASSERT_TDP_RESULT(err,"\nDemux_Unregister_Section_Filter_Callback\n");
-
-	err = Demux_Free_Filter(playerHandle, filterHandle);
-	ASSERT_TDP_RESULT(err,"Demux_Free_Filter\n\n");
-
-    sleep(3);
-    for(i=1; i<7; i++) {
-//     	pthread_mutex_lock(&statusMutex2);
-//         gettimeofday(&now,NULL);
-//         lockStatusWaitTime.tv_sec = now.tv_sec+3;
-//     	if(ETIMEDOUT == pthread_cond_timedwait(&statusCondition2, &statusMutex2, &lockStatusWaitTime))
-//         {
-//             printf("\n%s:ERROR PARSE PAT TABLE!\n",__FUNCTION__);
-//             return;
-//         }
-// printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__);
-        channelNumber++;
-
-        printf("(service+i)->program_map_pid = %d\n", (service+i)->program_map_pid);
-        printf("playerHandle = %d, filterHandle = %d \n", playerHandle, filterHandle);
-    	err = Demux_Set_Filter(playerHandle, (service+i)->program_map_pid, 0x02, &filterHandle);
-    	ASSERT_TDP_RESULT(err,"\nDemux_Set_Filter\n");
-
-         err = Demux_Register_Section_Filter_Callback(demuxCallback2);
-        ASSERT_TDP_RESULT(err,"\nDemux_Register_Section_Filter_Callback\n");
-
-    	printf("%d %d mutex\n",i,channelNumber);
-        //globalFlag = 1;
-    	 sleep(20);
-        err = Demux_Unregister_Section_Filter_Callback(demuxCallback2);
-        ASSERT_TDP_RESULT(err,"\nDemux_Unregister_Section_Filter_Callback\n");
-
-        err = Demux_Free_Filter(playerHandle, filterHandle);
-        ASSERT_TDP_RESULT(err,"Demux_Free_Filter\n");
-    }
     printChannels();
-    sleep(1);
 
-
-printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__);
-    /**TO DO:**/
     /*Play audio and video*/
-    //Player_Stream_Create(playerHandle, sourceHandle, vPID, vType, &videoStream);
-    Player_Stream_Create(playerHandle, sourceHandle, 1001, vType, &videoStream);
+    Player_Stream_Create(playerHandle, sourceHandle, vPID, vType, &videoStream);
     Player_Stream_Create(playerHandle, sourceHandle, aPID, aType, &audioStream);
-    printf("playerHandle = %d, filterHandle = %d, sourceHandle = %d\n",playerHandle, filterHandle, sourceHandle);
 }
 
 void deinitList() {
-	printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__);
-	printf("playerHandle = %d, filterHandle = %d, sourceHandle = %d\n",playerHandle, filterHandle, sourceHandle);
+    stopStream();
 	//Demux_Free_Filter(playerHandle, filterHandle);
     Player_Source_Close(playerHandle, sourceHandle);
     free(header);
@@ -183,58 +249,46 @@ void deinitList() {
     free(streamInfo);
 }
 
-//16 200 1000 1500 2000 2010 2020
 int32_t demuxCallback2(uint8_t *buffer) {
         int i = 1;
         int N = 0;
-       
-        // if (globalFlag == 0) {
-        // 	return 1;
-        // }
-        // pthread_mutex_lock(&statusMutex2);
+    
         parsePmtHeader(buffer, pmtHeader);
-        
-        printf("\ntable_id = %d",pmtHeader->table_id);
-        printf("\nsection_length = %d",pmtHeader->section_length);
-        printf("\nprobram_number = %d",pmtHeader->probram_number);
-        printf("\ncurrent_next_indicator = %d",pmtHeader->current_next_indicator);
-        // if(pmtHeader->current_next_indicator == 0) {
-        // 	return 1;
-        // }
-        printf("\nsection_number = %d",pmtHeader->section_number);
-        printf("\nlast_section_number = %d",pmtHeader->last_section_number);
-        printf("\nprogram_info_length = %d",pmtHeader->program_info_length);
+        if(pmtHeader->current_next_indicator == 0) {
+            return NO_ERROR;
+        }
+        pthread_mutex_lock(&statusMutex2);
 
+        printPmtHeader(pmtHeader);
         uint8_t* streamInfoBuffer = buffer + 12 + pmtHeader->program_info_length;
 
 		channels[channelNumber].channelNumber = pmtHeader->probram_number;
-
+        channels[channelNumber].teletext = 0;
+        
         while(streamInfoBuffer < (buffer + pmtHeader->section_length - 15) ) {
-printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__);
                 parseStreamInfo(streamInfoBuffer, streamInfo);
-printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__);
 
                 printf("\n%d.\n",i++);
                 if(streamInfo->stream_type == 2 || streamInfo->stream_type == 1) {
-                	printf("\n   VIDEO streamInfo->stream_type = %d",streamInfo->stream_type);
-                	printf("\n   VIDEO streamInfo->elementary_PID = %d",streamInfo->elementary_PID);
                 	channels[channelNumber].vPID = streamInfo->elementary_PID;
                 	channels[channelNumber].vType = VIDEO_TYPE_MPEG2;
-                	// break;
                 }else if(streamInfo->stream_type == 3) {
                 	channels[channelNumber].aPID = streamInfo->elementary_PID;
                 	channels[channelNumber].aType = AUDIO_TYPE_MPEG_AUDIO;
                 }
-                printf("\n   streamInfo->stream_type = %d",streamInfo->stream_type);
-                printf("\n   streamInfo->elementary_PID = %d",streamInfo->elementary_PID);
-                printf("\n   streamInfo->ES_info_length; = %d",streamInfo->ES_info_length);
+
+                printStreamInfo(streamInfo);
                 streamInfoBuffer += 5 + streamInfo->ES_info_length;
 
+                if(streamInfo->descriptor_tag == 0x56) {
+                    channels[channelNumber].teletext = 1;
+                }
+
         }
-		// globalFlag = 0;
-		// pthread_cond_signal(&statusCondition2);
-  //    	pthread_mutex_unlock(&statusMutex2);
-         return NO_ERROR;
+
+        pthread_cond_signal(&statusCondition2);
+        pthread_mutex_unlock(&statusMutex2);
+        return NO_ERROR;
         
 }
 
@@ -245,24 +299,12 @@ int32_t demuxCallback(uint8_t *buffer) {
     pthread_mutex_lock(&statusMutex);
         
 	parsePatHeader(buffer, header);
-        
-        printf("\ntable_id = %d",header->table_id);
-        printf("\nsection length = %d",header->section_length);
-        printf("\ntransport_stream_id = %d",header->transport_stream_id);
-        printf("\nversion_number = %d",header->version_number);
-        printf("\ncurrent_next_indicator = %d",header->current_next_indicator);
-        printf("\nsection_number = %d",header->section_number);
-        printf("\nlast_section_number = %d",header->last_section_number);
+    printPatHeader(header);    
 
 	N = (header->section_length - 9) / 4;
-
 	for(i=0;i<N;i++){
 		parsePatServiceInfo((buffer+8+(i*4)),service + i);
-
-                printf("\nservice %d.",i);
-                printf("\nservice->program_number = %d",(service + i)->program_number);
-                printf("\nservice->program_map_pid = %d",(service + i)->program_map_pid);
-
+        printPatServiceInfo(service + i);
 	}
 
 	pthread_cond_signal(&statusCondition);

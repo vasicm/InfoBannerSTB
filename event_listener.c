@@ -1,20 +1,14 @@
+
 #include "event_listener.h"
 
-#define NUM_EVENTS  5
+#define dbg printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__)
+;
 
-#define NON_STOP    1
 
 /* error codes */
 #define NO_ERROR 		0
 #define ERROR			1
 
-#define KEY_CHANNEL_UP             62
-#define KEY_CHANNEL_DOWN           61
-#define KEY_MUTE_                   60
-#define KEY_VOLUME_UP              63
-#define KEY_VOLUME_DOWN            64
-#define KEY_EXIT_                  102
-#define KEY_INFO_                  358
 
 #define ASSERT_TDP_RESULT(x,y)  if(NO_ERROR == x) \
                                     printf("%s success\n", y); \
@@ -25,10 +19,27 @@
 
 
 static int32_t inputFileDesc;
+    
+static const char* dev = "/dev/input/event0";
+static char deviceName[20];
 
 void initEventListener()
 {
+    inputFileDesc = open(dev, O_RDWR);
+    if(inputFileDesc == -1)
+    {
+        printf("Error while opening device (%s) !", strerror(errno));
+            return ;
+    }
+    
+    ioctl(inputFileDesc, EVIOCGNAME(sizeof(deviceName)), deviceName);
+        printf("RC device opened succesfully [%s]\n", deviceName);
+    
+    
+}
 
+void deintiEventListener()
+{
 }
 
 int32_t getKeys(int32_t count, uint8_t* buf, int32_t* eventsRead)

@@ -1,3 +1,20 @@
+#include "view.h"
+
+#include <stdio.h>
+#include <directfb.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <linux/input.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <pthread.h>
+
+#include <signal.h>
+#include <time.h>
+#include "timer.h"
+
 /* helper macro for error checking */
 #define DFBCHECK(x...)                                      \
 {                                                           \
@@ -9,6 +26,9 @@ if (err != DFB_OK)                                          \
     DirectFBErrorFatal( #x, err );                          \
   }                                                         \
 }
+
+// #define dbg printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__)
+
 
 static IDirectFBSurface *primary = NULL;
 IDirectFB *dfbInterface = NULL;
@@ -24,6 +44,13 @@ static int infoBannerHeight;
 static int imgHeight;
 static int imgWidth;
 static int padding = 50;
+
+static int infoBannerShowFlag = 0;
+DFBRegion infoBannerRegion;
+DFBRegion volumeRegion;
+
+static Timer infoBannerTimer;
+static Timer volumeGraphTimer;
 
 void initView(int argc, char *argv[]) 
 {
@@ -49,6 +76,17 @@ void initView(int argc, char *argv[])
 	infoBannerYCor = screenHeight * 7 / 10;
 	infoBannerWidth = screenWidth * 16 / 20;
 	infoBannerHeight = screenHeight * 2 / 10;
+
+	infoBannerRegion.x1 = infoBannerXCor;
+	infoBannerRegion.y1 = infoBannerYCor;
+	infoBannerRegion.x2 = infoBannerXCor + infoBannerWidth;
+	infoBannerRegion.y2 = infoBannerYCor + infoBannerHeight;
+
+	volumeRegion.x1 = padding;
+	volumeRegion.y1 = padding;
+
+	initTimer(&volumeGraphTimer, hiddeVolumeGraph, 3);
+	initTimer(&infoBannerTimer, hiddeInfoBanner, 3);
 }
 
 void clearScreen()
@@ -63,6 +101,10 @@ void clearScreen()
 
 void hiddeInfoBanner()
 {
+	infoBannerShowFlag = 0;
+	primary->Flip(primary,
+		/*region to be updated, NULL for the whole surface*/NULL,
+		/*flip flags*/0);
 	DFBCHECK(primary->SetColor(primary, 0x00, 0x00, 0x00, 0x00));
 	DFBCHECK(primary->FillRectangle(
 		primary, 
@@ -72,12 +114,21 @@ void hiddeInfoBanner()
 		infoBannerHeight
 		)
 	);
-	DFBCHECK(primary->Flip(primary, NULL, 0));
+	DFBCHECK(primary->Flip(primary, &infoBannerRegion, 0));
+}
+
+int isInfoBannerShowM()
+{
+	return infoBannerShowFlag;
 }
 
 void showInfoBanner(int channelNumber, int aPID, int vPID, int txt)
 {
 
+	infoBannerShowFlag = 1;
+	primary->Flip(primary,
+		/*region to be updated, NULL for the whole surface*/NULL,
+		/*flip flags*/0);
 	DFBCHECK(primary->SetColor(primary, 0x00, 0xff, 0x00, 0xff));
 	DFBCHECK(primary->FillRectangle(
 		primary, 
@@ -94,10 +145,10 @@ void showInfoBanner(int channelNumber, int aPID, int vPID, int txt)
     /* specify the height of the font by raising the appropriate flag and setting the height value */
 	fontDesc.flags = DFDESC_HEIGHT;
 	fontDesc.height = infoBannerHeight * 3 / 12;
-	fontDesc.height = 48;
+	//fontDesc.height = 48;
 
     /* create the font and set the created font for primary surface text drawing */
-	DFBCHECK(dfbInterface->CreateFont(dfbInterface, "/home/galois/fonts/DejaVuSans.ttf", &fontDesc, &fontInterface));
+	DFBCHECK(dfbInterface->CreateFont(dfbInterface, "/home/galois/fonts/DejaVuSerif-BoldOblique.ttf", &fontDesc, &fontInterface));
 	DFBCHECK(primary->SetFont(primary, fontInterface));
     
     /* draw the text */	
@@ -115,7 +166,10 @@ void showInfoBanner(int channelNumber, int aPID, int vPID, int txt)
 	);
 
 	fontDesc.height = infoBannerHeight / 6;
-	fontDesc.height = 20;
+	//fontDesc.height = 20;
+
+	DFBCHECK(dfbInterface->CreateFont(dfbInterface, "/home/galois/fonts/DejaVuSerif-BoldOblique.ttf", &fontDesc, &fontInterface));
+	DFBCHECK(primary->SetFont(primary, fontInterface));
 
 	sprintf(textToDraw,"Audio PID %d",aPID);
 	DFBCHECK(primary->DrawString(primary,
@@ -135,23 +189,27 @@ void showInfoBanner(int channelNumber, int aPID, int vPID, int txt)
 		DSTF_LEFT)
 	);
 
-	sprintf(textToDraw,"TXT");
-	DFBCHECK(primary->DrawString(primary,
-		textToDraw,
-		-1,
-		(infoBannerXCor + infoBannerWidth * 16 / 20),
-		(infoBannerYCor + infoBannerHeight / 3),
-		DSTF_LEFT)
-	);
-
-    primary->Flip(primary,
-		/*region to be updated, NULL for the whole surface*/NULL,
-		/*flip flags*/0);
+	if(txt != 0) {
+		sprintf(textToDraw,"TXT");
+		DFBCHECK(primary->DrawString(primary,
+			textToDraw,
+			-1,
+			(infoBannerXCor + infoBannerWidth * 16 / 20),
+			(infoBannerYCor + infoBannerHeight / 3),
+			DSTF_LEFT)
+		);
+	}
+    primary->Flip(primary, &infoBannerRegion, 0);
 	fontInterface->Release(fontInterface);
+
+	startTimer(&infoBannerTimer);
 }
 
 void showVolumeGraph(int volume)
 {
+	if (volume < 0 || volume > 10) {
+		return;
+	}
 	IDirectFBImageProvider *provider;
 	IDirectFBSurface *volumeSurface = NULL;
 
@@ -171,16 +229,19 @@ void showVolumeGraph(int volume)
 
     /* fetch the logo size and add (blit) it to the screen */
 	DFBCHECK(volumeSurface->GetSize(volumeSurface, &imgWidth, &imgHeight));
+
+	volumeRegion.x2 = padding + imgWidth;
+	volumeRegion.y2 = padding + imgHeight;
+
 	DFBCHECK(primary->Blit(primary,
 		/*source surface*/ volumeSurface,
 		/*source region, NULL to blit the whole surface*/ NULL,
 		/*destination x coordinate of the upper left corner of the image*/padding,
-		/*destination y coordinate of the upper left corner of the image*/(imgHeight + padding));
+		/*destination y coordinate of the upper left corner of the image*/padding));
 
-	DFBCHECK(primary->Flip(primary,
-		/*region to be updated, NULL for the whole surface*/NULL,
-		/*flip flags*/0)
-	);
+	DFBCHECK(primary->Flip(primary, &volumeRegion, 0));
+	startTimer(&volumeGraphTimer);
+
 }
 
 void hiddeVolumeGraph()
@@ -189,15 +250,16 @@ void hiddeVolumeGraph()
 	DFBCHECK(primary->FillRectangle(
 		primary, 
 		padding, 
-		(imgHeight + padding), 
+		padding, 
 		imgWidth, 
 		imgHeight
 		)
 	);
-	DFBCHECK(primary->Flip(primary, NULL, 0));
+	DFBCHECK(primary->Flip(primary, &volumeRegion, 0));
 }
 
 void deintiView()
 {
-
+	removeTimer(&volumeGraphTimer);
+	removeTimer(&infoBannerTimer);
 }

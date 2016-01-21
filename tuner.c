@@ -5,7 +5,8 @@
 #define VIDEO_PID 101				/* Channel video pid */
 #define AUDIO_PID 103				/* Channel audio pid */
 
-#define dbg printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__)
+// #define dbg printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__)
+
 
 static uint32_t tuneFrequency = 818000000;
 static uint32_t bandwidth = 8;
@@ -44,11 +45,6 @@ t_Module getModul() {
 }
 
 void initSTB() {
-	//TODO: del this
-	tuneFrequency = 818000000;
-	bandwidth = 8;
-	modul = DVB_T;
-	//END TODO
 
 	gettimeofday(&now,NULL);
     lockStatusWaitTime.tv_sec = now.tv_sec+10;

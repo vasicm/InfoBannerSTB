@@ -40,4 +40,42 @@ uint8_t parseStreamInfo(uint8_t* buffer, StreamInfo* streamInfo)
         streamInfo->stream_type = (uint8_t) *buffer;
         streamInfo->elementary_PID = (uint16_t) (((*(buffer + 1) << 8) + *(buffer + 2)) & 0x1FFF); 
         streamInfo->ES_info_length = (uint16_t) (((*(buffer + 3) << 8) + *(buffer + 4)) & 0x0FFF); 
+
+        if(streamInfo->ES_info_length > 1) {
+                streamInfo->descriptor_tag = (uint8_t)(*(buffer + 5));
+        } else {
+                streamInfo->descriptor_tag = 0;
+        }
+}
+
+void printPatHeader(PatHeader* header) {
+        printf("\ntable_id = %d",header->table_id);
+        printf("\nsection length = %d",header->section_length);
+        printf("\ntransport_stream_id = %d",header->transport_stream_id);
+        printf("\nversion_number = %d",header->version_number);
+        printf("\ncurrent_next_indicator = %d",header->current_next_indicator);
+        printf("\nsection_number = %d",header->section_number);
+        printf("\nlast_section_number = %d",header->last_section_number);
+}
+
+void printPatServiceInfo(PatServiceInfo* service) {
+        printf("\nservice->program_number = %d",service->program_number);
+        printf("\nservice->program_map_pid = %d",service->program_map_pid);
+}
+
+void printPmtHeader(PmtHeader* pmtHeader) {
+        printf("\ntable_id = %d",pmtHeader->table_id);
+        printf("\nsection_length = %d",pmtHeader->section_length);
+        printf("\nprobram_number = %d",pmtHeader->probram_number);
+        printf("\ncurrent_next_indicator = %d",pmtHeader->current_next_indicator);
+        printf("\nsection_number = %d",pmtHeader->section_number);
+        printf("\nlast_section_number = %d",pmtHeader->last_section_number);
+        printf("\nprogram_info_length = %d",pmtHeader->program_info_length);
+}
+
+void printStreamInfo(StreamInfo* streamInfo) {
+        printf("\n   streamInfo->stream_type = %d",streamInfo->stream_type);
+        printf("\n   streamInfo->elementary_PID = %d",streamInfo->elementary_PID);
+        printf("\n   streamInfo->ES_info_length = %d",streamInfo->ES_info_length);
+        printf("\n   streamInfo->descriptor_tag = %d",streamInfo->descriptor_tag);
 }
