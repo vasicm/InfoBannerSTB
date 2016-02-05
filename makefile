@@ -35,9 +35,9 @@ CXXFLAGS = $(CFLAGS)
 
 all: parser_playback_sample
 
-SRCS =  ./zapper.c
+SRCS =  ./dvbApp.c
 SRCS += ./tables_parser.c
-SRCS += ./lists.c
+SRCS += ./channel_list.c
 SRCS += ./tuner.c
 SRCS += ./view.c
 SRCS += ./timer.c
@@ -45,7 +45,7 @@ SRCS += ./event_listener.c
 SRCS += ./config_reader.c
 
 parser_playback_sample:
-	$(CC) -o zapper $(INCS) $(SRCS) $(CFLAGS) $(LIBS)
+	$(CC) -o dvbApp $(INCS) $(SRCS) $(CFLAGS) $(LIBS)
     
 clean:
-	rm -f zapper
+	rm -f dvbApp

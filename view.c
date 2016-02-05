@@ -129,7 +129,7 @@ void showInfoBanner(int channelNumber, int aPID, int vPID, int txt)
 	primary->Flip(primary,
 		/*region to be updated, NULL for the whole surface*/NULL,
 		/*flip flags*/0);
-	DFBCHECK(primary->SetColor(primary, 0x00, 0xff, 0x00, 0xff));
+	DFBCHECK(primary->SetColor(primary, 0x00, 0xff, 0x99, 0xff));
 	DFBCHECK(primary->FillRectangle(
 		primary, 
 		infoBannerXCor, 

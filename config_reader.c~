@@ -24,7 +24,7 @@ void print(config conf) {
 }
 
 void addProperty(char name[], char value[]) {
-    // printf("\n *%s* *%s* \n", name, value);
+    printf("\n *%s* *%s* \n", name, value);
 	if(strcmp(name,"frequency")==0) {
 		d_config.frequency = atoi(value);
 	}else if(strcmp(name,"bandwidth")==0) {
@@ -36,10 +36,10 @@ void addProperty(char name[], char value[]) {
 	}else if(strcmp(name,"module")==0) {
 		d_config.module = toTModule(value);
 	}else if(strcmp(name,"aType")==0) {
-        // printf("toAudioTStreamType %d\n", toAudioTStreamType(value));
+        printf("toAudioTStreamType %d\n", toAudioTStreamType(value));
 		d_config.aType = toAudioTStreamType(value);
 	}else if(strcmp(name,"vType")==0) {
-        // printf("toVideoTStreamType %d\n", toVideoTStreamType(value));
+        printf("toVideoTStreamType %d\n", toVideoTStreamType(value));
 		d_config.vType = toVideoTStreamType(value);
 	}
 }
@@ -57,13 +57,12 @@ int readLine(FILE* fp, char name[], char value[]){
 	i = 0;
 	while( ( ch = fgetc(fp) ) != 10) {
 		if(feof(fp)) {
-            value[i++] = 0;
 			break;
 		}
 		value[i++] = ch;
 	}
 	
-	value[i - 1] = 0;
+	value[i++] = 0;
 
 	return 1;
 }
@@ -95,7 +94,7 @@ int initConfig(int argc, char** argv)
 			addProperty(name, value);
 		}
 	}
-    // print(d_config);
+    print(d_config);
 	fclose(fp);
 	return 0;
 }

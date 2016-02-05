@@ -7,7 +7,6 @@
 #include <string.h>
 
 typedef struct _Timer {
-    
     timer_t timerId;
     struct itimerspec timerSpec;
     struct itimerspec timerSpecOld;

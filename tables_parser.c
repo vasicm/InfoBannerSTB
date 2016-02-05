@@ -31,7 +31,6 @@ uint8_t parsePmtHeader(uint8_t* buffer, PmtHeader* header)
         header->last_section_number = (uint8_t) (*(buffer + 7)) & 0xFF;;
         header->PCR_PID = (uint16_t) (((*(buffer + 8) << 8) + *(buffer + 9)) & 0x1FFF);
         header->program_info_length = (uint16_t) (((*(buffer + 10) << 8) + *(buffer + 11)) & 0x0FFF);
-        // 12 + header->program_info_length
 }
 
 // (0)96  (1)104  (2)112  (3)120  (4)128  (5)136

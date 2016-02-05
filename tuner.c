@@ -7,6 +7,11 @@
 
 // #define dbg printf("\nfunction:%s(%d)\n",__FUNCTION__,__LINE__)
 
+#define ASSERT(x,y)  if(x)\
+                        {\
+                            printf("\n%s : %s\n", __FUNCTION__, y);\
+                            return;\
+                        }
 
 static uint32_t tuneFrequency = 818000000;
 static uint32_t bandwidth = 8;
@@ -50,17 +55,19 @@ void initSTB() {
     lockStatusWaitTime.tv_sec = now.tv_sec+10;
 
 	/*Initialize tuner device*/
-    if(Tuner_Init())
-    {
-        printf("\n%s : ERROR Tuner_Init() fail\n", __FUNCTION__);
-        return;
-    }
+    // if(Tuner_Init())
+    // {
+    //     printf("\n%s : ERROR Tuner_Init() fail\n", __FUNCTION__);
+    //     return;
+    // }
+    ASSERT(Tuner_Init(),"ERROR Tuner_Init() fail")
     
     /* Register tuner status callback */
-    if(Tuner_Register_Status_Callback(tunerStatusCallback))
-    {
-		printf("\n%s : ERROR Tuner_Register_Status_Callback() fail\n", __FUNCTION__);
-	}
+ //    if(Tuner_Register_Status_Callback(tunerStatusCallback))
+ //    {
+	// 	printf("\n%s : ERROR Tuner_Register_Status_Callback() fail\n", __FUNCTION__);
+	// }
+    ASSERT(Tuner_Register_Status_Callback(tunerStatusCallback), "ERROR Tuner_Register_Status_Callback() fail")
     
     /*Lock to frequency*/
     if(!Tuner_Lock_To_Frequency(tuneFrequency, bandwidth, modul))

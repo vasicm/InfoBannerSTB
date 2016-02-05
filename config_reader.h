@@ -27,6 +27,10 @@ typedef struct _config {
 	int vType;
 }config;
 
+tStreamType toAudioTStreamType(char type[]);
+tStreamType toVideoTStreamType(char vType[]);
+t_Module toTModule(char module[]);
+
 int readLine(FILE* fp, char name[], char value[]);
 void addProperty(char name[], char value[]);
 void print(config conf);
